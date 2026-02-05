@@ -1,0 +1,594 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>Age Manager</title>
+    
+    <!-- PWA Meta Tags -->
+    <meta name="theme-color" content="#2563eb" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="年齢管理" />
+    <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/3652/3652191.png" />
+    <link rel="manifest" href="manifest.json" />
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            fontFamily: {
+              sans: ['Inter', 'sans-serif'],
+            },
+          },
+        },
+      }
+    </script>
+    
+    <!-- Babel for JSX transformation in browser -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    
+    <!-- Import Map for React modules -->
+    <script type="importmap">
+    {
+      "imports": {
+        "react": "https://esm.sh/react@18.2.0",
+        "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
+        "lucide-react": "https://esm.sh/lucide-react@0.294.0"
+      }
+    }
+    </script>
+    <style>
+      /* Mobile Safari and standard elastic scrolling fix */
+      body {
+        overflow-x: hidden;
+        overscroll-behavior-y: contain;
+      }
+      /* Hide scrollbar for Chrome, Safari and Opera */
+      .scrollbar-hide::-webkit-scrollbar {
+        display: none;
+      }
+    </style>
+<link rel="stylesheet" href="/index.css">
+</head>
+<body class="bg-slate-50 text-slate-900 antialiased">
+    <div id="root"></div>
+
+    <script type="text/babel" data-type="module">
+        import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+        import { createRoot } from 'react-dom/client';
+        import { Plus, Trash2, Calendar, User, PartyPopper, ArrowUpDown, ArrowUp, ArrowDown, Folder, Edit2, X, Save, ChevronDown, Layers, Settings, Download, Upload, Copy, Check, AlertCircle } from 'lucide-react';
+
+        // --- Service Worker Registration for PWA ---
+        if ('serviceWorker' in navigator) {
+          window.addEventListener('load', () => {
+            navigator.serviceWorker.register('./sw.js').then(registration => {
+              console.log('SW registered: ', registration);
+            }).catch(registrationError => {
+              console.log('SW registration failed: ', registrationError);
+            });
+          });
+        }
+
+        // --- Utils ---
+        const calculateAge = (dobString) => {
+          const birthDate = new Date(dobString);
+          const today = new Date();
+          
+          let age = today.getFullYear() - birthDate.getFullYear();
+          const m = today.getMonth() - birthDate.getMonth();
+          
+          if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) {
+            age--;
+          }
+          
+          return age;
+        };
+
+        const formatDate = (dateString) => {
+          const date = new Date(dateString);
+          return new Intl.DateTimeFormat('ja-JP', {
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric',
+          }).format(date);
+        };
+
+        const generateId = () => {
+          return Date.now().toString(36) + Math.random().toString(36).substring(2, 9);
+        };
+
+        const utoa = (str) => {
+            try {
+                return btoa(unescape(encodeURIComponent(str)));
+            } catch (e) {
+                console.error("Encoding error", e);
+                return "";
+            }
+        };
+
+        const atou = (str) => {
+            try {
+                return decodeURIComponent(escape(atob(str)));
+            } catch (e) {
+                throw new Error("Decoding error");
+            }
+        };
+
+        const STORAGE_KEY = 'age-app-data-v1';
+        const ALL_GROUP_ID = 'ALL_GROUPS';
+
+        // --- Components ---
+        const Combobox = ({ value, onChange, options, placeholder, label, maxHeight = "max-h-48", className = "" }) => {
+          const [isOpen, setIsOpen] = useState(false);
+          const containerRef = useRef(null);
+          const inputRef = useRef(null);
+
+          useEffect(() => {
+            const handleClickOutside = (event) => {
+              if (containerRef.current && !containerRef.current.contains(event.target)) {
+                setIsOpen(false);
+              }
+            };
+            document.addEventListener('mousedown', handleClickOutside);
+            return () => document.removeEventListener('mousedown', handleClickOutside);
+          }, []);
+
+          const handleInputChange = (e) => {
+            const val = e.target.value;
+            if (val === '' || /^\d+$/.test(val)) {
+              onChange(val);
+              if (!isOpen) setIsOpen(true);
+            }
+          };
+
+          const handleOptionClick = (option) => {
+            onChange(option.toString());
+            setIsOpen(false);
+          };
+
+          return (
+            <div className={`relative ${className}`} ref={containerRef}>
+              <div className="relative">
+                <input
+                  ref={inputRef}
+                  type="text"
+                  inputMode="numeric"
+                  value={value}
+                  onChange={handleInputChange}
+                  onFocus={() => setIsOpen(true)}
+                  className="block w-full pl-3 pr-8 py-2.5 border border-slate-300 rounded-lg leading-5 bg-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-base sm:text-sm transition duration-150 ease-in-out"
+                  placeholder={placeholder}
+                />
+                <div className="pointer-events-none absolute inset-y-0 right-8 flex items-center text-slate-500 text-sm">
+                  {label}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsOpen(!isOpen);
+                    if (!isOpen && inputRef.current) {
+                      inputRef.current.focus();
+                    }
+                  }}
+                  className="absolute inset-y-0 right-0 flex items-center px-2 text-slate-500 hover:text-slate-700 focus:outline-none"
+                  tabIndex={-1}
+                >
+                  <ChevronDown className="h-4 w-4" />
+                </button>
+              </div>
+
+              {isOpen && (
+                <div className={`absolute z-20 w-full mt-1 bg-white border border-slate-200 rounded-lg shadow-lg ${maxHeight} overflow-y-auto`}>
+                  {options.length > 0 ? (
+                    options.map((option) => (
+                      <button
+                        key={option}
+                        type="button"
+                        onClick={() => handleOptionClick(option)}
+                        className={`w-full text-left px-4 py-3 text-sm hover:bg-blue-50 transition-colors ${
+                          value === option.toString() ? 'bg-blue-50 text-blue-700 font-medium' : 'text-slate-700'
+                        }`}
+                      >
+                        {option}
+                      </button>
+                    ))
+                  ) : (
+                    <div className="px-4 py-2 text-sm text-slate-400">候補なし</div>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        };
+
+        const DataManagementModal = ({ isOpen, onClose, groups, setGroups, activeGroupId }) => {
+            const [activeTab, setActiveTab] = useState('export');
+            const [importValue, setImportValue] = useState('');
+            const [copySuccess, setCopySuccess] = useState(false);
+            const [exportTargetId, setExportTargetId] = useState('ALL'); 
+
+            useEffect(() => {
+                if (isOpen) {
+                    setImportValue('');
+                    setCopySuccess(false);
+                    setExportTargetId(activeGroupId === ALL_GROUP_ID ? 'ALL' : activeGroupId);
+                }
+            }, [isOpen, activeGroupId]);
+
+            const exportString = useMemo(() => {
+                if (!groups) return '';
+                try {
+                    let dataToExport = groups;
+                    if (exportTargetId !== 'ALL') {
+                        const target = groups.find(g => g.id === exportTargetId);
+                        dataToExport = target ? [target] : [];
+                    }
+                    if (dataToExport.length === 0) return '';
+                    return utoa(JSON.stringify(dataToExport));
+                } catch (e) {
+                    console.error(e);
+                    return '';
+                }
+            }, [groups, exportTargetId]);
+
+            const handleCopy = async () => {
+                try {
+                    await navigator.clipboard.writeText(exportString);
+                    setCopySuccess(true);
+                    setTimeout(() => setCopySuccess(false), 2000);
+                } catch (err) {
+                    console.error('Failed to copy', err);
+                    alert("クリップボードへのコピーに失敗しました。");
+                }
+            };
+
+            const handleImport = () => {
+                if (!importValue) return;
+                const input = importValue.trim();
+                try {
+                    let parsedData = null;
+                    try {
+                        parsedData = JSON.parse(input);
+                    } catch (e) {}
+
+                    if (!parsedData) {
+                         try {
+                            parsedData = JSON.parse(atou(input.replace(/[\s\n\r]/g, '')));
+                         } catch (e) {
+                             alert('読み込みに失敗しました。コードを確認してください。');
+                             return;
+                         }
+                    }
+                    const dataArray = Array.isArray(parsedData) ? parsedData : [parsedData];
+                    const isValid = dataArray.every(g => g && typeof g === 'object' && Array.isArray(g.people) && g.name);
+                    if (!isValid) {
+                        alert('データの形式が正しくありません。');
+                        return;
+                    }
+                    const newGroups = dataArray.map(g => ({
+                        ...g,
+                        id: generateId(), 
+                        name: `${g.name} (インポート)`,
+                        people: g.people.map(p => ({ ...p, id: generateId() }))
+                    }));
+                    if (window.confirm(`${newGroups.length}件のリストを読み込みますか？`)) {
+                        setGroups(prev => [...prev, ...newGroups]);
+                        onClose();
+                    }
+                } catch (e) {
+                    alert('エラーが発生しました: ' + e.message);
+                }
+            };
+
+            if (!isOpen) return null;
+
+            return (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
+                    <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden flex flex-col max-h-[90vh]">
+                        <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+                            <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                                <Settings size={20} className="text-slate-500" />
+                                データ管理
+                            </h3>
+                            <button onClick={onClose} className="text-slate-400 hover:text-slate-600">
+                                <X size={20} />
+                            </button>
+                        </div>
+                        <div className="flex border-b border-slate-200">
+                            <button onClick={() => setActiveTab('export')} className={`flex-1 py-3 text-sm font-semibold ${activeTab === 'export' ? 'text-blue-600 border-b-2 border-blue-600 bg-blue-50/50' : 'text-slate-500'}`}>書き出し</button>
+                            <button onClick={() => setActiveTab('import')} className={`flex-1 py-3 text-sm font-semibold ${activeTab === 'import' ? 'text-blue-600 border-b-2 border-blue-600 bg-blue-50/50' : 'text-slate-500'}`}>読み込み</button>
+                        </div>
+                        <div className="p-6 overflow-y-auto">
+                            {activeTab === 'export' ? (
+                                <div className="space-y-4">
+                                    <select value={exportTargetId} onChange={(e) => setExportTargetId(e.target.value)} className="block w-full py-2.5 px-3 border border-slate-300 rounded-lg text-sm">
+                                        <option value="ALL">すべてのリスト</option>
+                                        {groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+                                    </select>
+                                    <textarea readOnly value={exportString} className="w-full h-32 p-3 text-xs font-mono bg-slate-100 border border-slate-200 rounded-lg resize-none" onClick={(e) => e.target.select()} />
+                                    <button onClick={handleCopy} className={`w-full flex items-center justify-center gap-2 py-3 rounded-xl font-bold ${copySuccess ? 'bg-green-500 text-white' : 'bg-slate-900 text-white'}`}>
+                                        {copySuccess ? <Check size={18} /> : <Copy size={18} />}
+                                        {copySuccess ? 'コピーしました' : 'コードをコピー'}
+                                    </button>
+                                </div>
+                            ) : (
+                                <div className="space-y-4">
+                                    <textarea value={importValue} onChange={(e) => setImportValue(e.target.value)} placeholder="コードをペースト..." className="w-full h-32 p-3 text-xs font-mono bg-white border border-slate-300 rounded-lg resize-none" />
+                                    <button onClick={handleImport} className={`w-full py-3 rounded-xl font-bold ${importValue.trim() ? 'bg-blue-600 text-white' : 'bg-slate-300 text-slate-500'}`}>データを読み込む</button>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        const App = () => {
+          const [groups, setGroups] = useState(() => {
+            try {
+              const saved = localStorage.getItem(STORAGE_KEY);
+              if (saved) {
+                const parsed = JSON.parse(saved);
+                if (Array.isArray(parsed)) {
+                  if (parsed.length === 0 || (parsed[0] && 'dob' in parsed[0])) {
+                    return [{ id: generateId(), name: 'マイリスト', people: parsed }];
+                  }
+                  return parsed;
+                }
+              }
+              return [{ id: generateId(), name: 'マイリスト', people: [] }];
+            } catch (e) {
+              return [{ id: generateId(), name: 'マイリスト', people: [] }];
+            }
+          });
+
+          const [activeGroupId, setActiveGroupId] = useState(ALL_GROUP_ID);
+          const [modalType, setModalType] = useState(null);
+          const [modalValue, setModalValue] = useState('');
+          const modalInputRef = useRef(null);
+          const [isDataModalOpen, setIsDataModalOpen] = useState(false);
+          const [name, setName] = useState('');
+          const [targetGroupId, setTargetGroupId] = useState('');
+          const [birthYear, setBirthYear] = useState('');
+          const [birthMonth, setBirthMonth] = useState('');
+          const [birthDay, setBirthDay] = useState('');
+          const [sortOrder, setSortOrder] = useState('birthday');
+
+          const currentYear = new Date().getFullYear();
+          const years = useMemo(() => Array.from({ length: 120 }, (_, i) => currentYear - i), [currentYear]);
+          const months = useMemo(() => Array.from({ length: 12 }, (_, i) => i + 1), []);
+          const daysInMonth = useMemo(() => {
+            const y = parseInt(birthYear);
+            const m = parseInt(birthMonth);
+            if (isNaN(y) || isNaN(m)) return 31;
+            return new Date(y, m, 0).getDate();
+          }, [birthYear, birthMonth]);
+          const days = useMemo(() => Array.from({ length: daysInMonth }, (_, i) => i + 1), [daysInMonth]);
+
+          useEffect(() => {
+            if (birthDay) {
+              const d = parseInt(birthDay);
+              if (!isNaN(d) && d > daysInMonth) setBirthDay(''); 
+            }
+          }, [daysInMonth, birthMonth]);
+
+          useEffect(() => {
+             if (activeGroupId === ALL_GROUP_ID) {
+                if (groups.length > 0) setTargetGroupId(groups[0].id);
+             } else {
+                setTargetGroupId(activeGroupId);
+             }
+          }, [activeGroupId, groups]);
+
+          useEffect(() => {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(groups));
+          }, [groups]);
+
+          useEffect(() => {
+            if (modalType && modalInputRef.current) setTimeout(() => modalInputRef.current?.focus(), 50);
+          }, [modalType]);
+
+          const activeViewData = useMemo(() => {
+            if (activeGroupId === ALL_GROUP_ID) {
+                const allPeople = groups.flatMap(group => group.people.map(person => ({ ...person, sourceGroupId: group.id, sourceGroupName: group.name })));
+                return { id: ALL_GROUP_ID, name: 'すべて', people: allPeople, isAll: true };
+            }
+            const group = groups.find(g => g.id === activeGroupId) || groups[0];
+            return { ...group, isAll: false };
+          }, [groups, activeGroupId]);
+
+          const openCreateModal = () => { setModalType('createGroup'); setModalValue(''); };
+          const openRenameModal = () => { if (activeViewData.isAll) return; setModalType('renameGroup'); setModalValue(activeViewData.name); };
+          const closeModal = () => { setModalType(null); setModalValue(''); };
+
+          const handleModalSubmit = (e) => {
+            e.preventDefault();
+            if (!modalValue.trim()) return;
+            if (modalType === 'createGroup') {
+              const newGroup = { id: generateId(), name: modalValue.trim(), people: [] };
+              setGroups(prev => [...prev, newGroup]);
+              setActiveGroupId(newGroup.id);
+            } else if (modalType === 'renameGroup' && !activeViewData.isAll) {
+              setGroups(prev => prev.map(g => g.id === activeViewData.id ? { ...g, name: modalValue.trim() } : g));
+            }
+            closeModal();
+          };
+
+          const handleDeleteGroup = (e, groupId) => {
+            if (e) { e.preventDefault(); e.stopPropagation(); }
+            const group = groups.find(g => g.id === groupId);
+            if (!group) return;
+            if (groups.length <= 1) return alert("最後のリストは削除できません");
+            if (window.confirm(`リスト「${group.name}」を削除しますか？`)) {
+              setGroups(groups.filter(g => g.id !== groupId));
+              setActiveGroupId(ALL_GROUP_ID);
+            }
+          };
+
+          const isValidDate = useCallback(() => {
+            if (!name.trim() || !birthYear || !birthMonth || !birthDay) return false;
+            const y = parseInt(birthYear); const m = parseInt(birthMonth); const d = parseInt(birthDay);
+            if (isNaN(y) || isNaN(m) || isNaN(d) || m < 1 || m > 12) return false;
+            if (d < 1 || d > new Date(y, m, 0).getDate()) return false;
+            return true;
+          }, [name, birthYear, birthMonth, birthDay]);
+
+          const handleAddPerson = useCallback((e) => {
+            e.preventDefault();
+            if (!isValidDate()) return;
+            const destGroupId = activeGroupId === ALL_GROUP_ID ? targetGroupId : activeGroupId;
+            const dob = `${birthYear}-${birthMonth.padStart(2, '0')}-${birthDay.padStart(2, '0')}`;
+            const newPerson = { id: generateId(), name: name.trim(), dob, createdAt: new Date().toISOString() };
+            setGroups(prev => prev.map(g => g.id === destGroupId ? { ...g, people: [newPerson, ...g.people] } : g));
+            setName(''); setBirthYear(''); setBirthMonth(''); setBirthDay('');
+          }, [name, birthYear, birthMonth, birthDay, activeGroupId, targetGroupId, isValidDate]);
+
+          const handleDeletePerson = useCallback((personId, sourceGroupId) => {
+            setGroups(prev => prev.map(g => g.id === (sourceGroupId || activeGroupId) ? { ...g, people: g.people.filter(p => p.id !== personId) } : g));
+          }, [activeGroupId]);
+
+          const toggleSort = useCallback(() => {
+            setSortOrder(prev => prev === 'birthday' ? 'age-asc' : (prev === 'age-asc' ? 'age-desc' : 'birthday'));
+          }, []);
+
+          const sortedPeople = useMemo(() => {
+            if (!activeViewData) return [];
+            return [...activeViewData.people].sort((a, b) => {
+              if (sortOrder === 'birthday') return a.dob.slice(5).localeCompare(b.dob.slice(5));
+              return sortOrder === 'age-asc' ? b.dob.localeCompare(a.dob) : a.dob.localeCompare(b.dob);
+            });
+          }, [activeViewData, sortOrder]);
+
+          return (
+            <div className="min-h-screen bg-slate-50 py-6 px-4 sm:px-6 lg:px-8 font-sans safe-area-inset-top">
+              <div className="max-w-2xl mx-auto space-y-6">
+                <div className="relative text-center space-y-2 mb-6">
+                  <div className="absolute top-0 right-0">
+                    <button onClick={() => setIsDataModalOpen(true)} className="p-2 text-slate-400 hover:text-slate-600"><Settings size={22} /></button>
+                  </div>
+                  <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-blue-100 text-blue-600 mb-2"><PartyPopper size={24} /></div>
+                  <h1 className="text-2xl font-bold tracking-tight text-slate-900">年齢管理</h1>
+                </div>
+
+                <div className="flex items-center gap-2 overflow-x-auto pb-4 scrollbar-hide">
+                  <button onClick={() => setActiveGroupId(ALL_GROUP_ID)} className={`flex-shrink-0 flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-bold border ${activeGroupId === ALL_GROUP_ID ? 'bg-blue-600 text-white border-blue-600 shadow-md' : 'bg-white text-slate-600 border-slate-200'}`}>
+                    <Layers size={16} /><span>すべて</span>
+                  </button>
+                  {groups.map(group => (
+                    <button key={group.id} onClick={() => setActiveGroupId(group.id)} className={`flex-shrink-0 flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-bold border ${activeGroupId === group.id ? 'bg-blue-600 text-white border-blue-600 shadow-md' : 'bg-white text-slate-600 border-slate-200'}`}>
+                      <Folder size={16} /><span className="max-w-[120px] truncate">{group.name}</span>
+                    </button>
+                  ))}
+                  <button onClick={openCreateModal} className="flex-shrink-0 w-11 h-11 rounded-full bg-white border border-dashed border-slate-300 text-slate-400 flex items-center justify-center"><Plus size={22} /></button>
+                </div>
+
+                <div className="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="bg-blue-50 p-2 rounded-xl text-blue-600">{activeViewData.isAll ? <Layers size={20} /> : <Folder size={20} />}</div>
+                      <div>
+                        <h2 className="text-base font-bold text-slate-900">{activeViewData.name}</h2>
+                        <p className="text-[10px] text-slate-500">{activeViewData.people.length}人のメンバー</p>
+                      </div>
+                    </div>
+                    {!activeViewData.isAll && (
+                        <div className="flex items-center gap-1">
+                          <button onClick={openRenameModal} className="p-2 text-slate-400"><Edit2 size={16} /></button>
+                          {groups.length > 1 && <button onClick={(e) => handleDeleteGroup(e, activeViewData.id)} className="p-2 text-slate-400 hover:text-red-500"><Trash2 size={16} /></button>}
+                        </div>
+                    )}
+                </div>
+
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between px-1">
+                    <h2 className="text-sm font-bold text-slate-900">メンバーリスト</h2>
+                    {activeViewData.people.length > 0 && (
+                      <button onClick={toggleSort} className="text-[10px] font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded-lg">並び替え</button>
+                    )}
+                  </div>
+                  {activeViewData.people.length === 0 ? (
+                    <div className="text-center py-8 bg-white rounded-2xl border border-dashed border-slate-200"><User className="mx-auto h-10 w-10 text-slate-200" /><p className="mt-2 text-xs text-slate-400">メンバーを追加してください</p></div>
+                  ) : (
+                    <div className="bg-white shadow-sm border border-slate-200 rounded-2xl divide-y divide-slate-50">
+                      {sortedPeople.map((person) => {
+                        const age = calculateAge(person.dob);
+                        return (
+                          <div key={person.id} className="p-4 flex items-center justify-between">
+                            <div className="flex items-center gap-4">
+                              <div className="h-12 w-12 rounded-full bg-blue-50 flex flex-col items-center justify-center text-blue-600 border border-blue-100">
+                                <span className="text-lg font-bold leading-none">{age}</span>
+                                <span className="text-[8px] mt-0.5">歳</span>
+                              </div>
+                              <div>
+                                <h3 className="text-sm font-bold text-slate-900">{person.name}</h3>
+                                <p className="text-[10px] text-slate-500">{formatDate(person.dob)} 生まれ</p>
+                              </div>
+                            </div>
+                            <button onClick={() => handleDeletePerson(person.id, person.sourceGroupId)} className="p-2 text-slate-200 hover:text-red-500"><Trash2 size={18} /></button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden mb-8">
+                  <div className="p-4 bg-slate-50/50 border-b border-slate-100"><h2 className="text-sm font-bold text-slate-900 flex items-center gap-2"><Plus size={16} />新規登録</h2></div>
+                  <div className="p-5">
+                    <form onSubmit={handleAddPerson} className="space-y-4">
+                      <div className="space-y-4">
+                        <div className="space-y-1">
+                          <label className="text-xs font-bold text-slate-500">お名前</label>
+                          <input type="text" required value={name} onChange={(e) => setName(e.target.value)} className="block w-full px-3 py-2.5 border border-slate-300 rounded-lg text-base" placeholder="名前" />
+                        </div>
+                        {activeViewData.isAll && (
+                          <div className="space-y-1">
+                            <label className="text-xs font-bold text-slate-500">追加先</label>
+                            <select value={targetGroupId} onChange={(e) => setTargetGroupId(e.target.value)} className="block w-full px-3 py-2.5 border border-slate-300 rounded-lg text-base">
+                              {groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+                            </select>
+                          </div>
+                        )}
+                        <div className="space-y-1">
+                          <label className="text-xs font-bold text-slate-500">生年月日</label>
+                          <div className="grid grid-cols-3 gap-2">
+                            <Combobox value={birthYear} onChange={setBirthYear} options={years} label="年" />
+                            <Combobox value={birthMonth} onChange={setBirthMonth} options={months} label="月" />
+                            <Combobox value={birthDay} onChange={setBirthDay} options={days} label="日" />
+                          </div>
+                        </div>
+                      </div>
+                      <button type="submit" disabled={!isValidDate()} className="w-full py-3 bg-blue-600 text-white font-bold rounded-xl disabled:opacity-50">リストに追加</button>
+                    </form>
+                  </div>
+                </div>
+              </div>
+
+              <DataManagementModal isOpen={isDataModalOpen} onClose={() => setIsDataModalOpen(false)} groups={groups} setGroups={setGroups} activeGroupId={activeGroupId} />
+              
+              {modalType && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
+                  <div className="bg-white rounded-2xl shadow-xl w-full max-w-xs p-6 space-y-4">
+                    <h3 className="font-bold text-slate-900">{modalType === 'createGroup' ? '新しいリスト' : '名前変更'}</h3>
+                    <input ref={modalInputRef} type="text" value={modalValue} onChange={(e) => setModalValue(e.target.value)} className="w-full px-3 py-2 border rounded-lg text-base" placeholder="リスト名" required />
+                    <div className="flex gap-2">
+                      <button onClick={closeModal} className="flex-1 py-2 border rounded-lg text-sm">戻る</button>
+                      <button onClick={handleModalSubmit} className="flex-1 py-2 bg-blue-600 text-white font-bold rounded-lg text-sm">保存</button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        };
+
+        const root = createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+<script type="module" src="/index.tsx"></script>
+</body>
+</html>
