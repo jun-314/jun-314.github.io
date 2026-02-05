@@ -53,7 +53,6 @@
         display: none;
       }
     </style>
-<link rel="stylesheet" href="/index.css">
 </head>
 <body class="bg-slate-50 text-slate-900 antialiased">
     <div id="root"></div>
@@ -507,7 +506,13 @@
                   <div className="flex items-center justify-between px-1">
                     <h2 className="text-sm font-bold text-slate-900">メンバーリスト</h2>
                     {activeViewData.people.length > 0 && (
-                      <button onClick={toggleSort} className="text-[10px] font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded-lg">並び替え</button>
+                      <button 
+                        onClick={toggleSort} 
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors shadow-sm"
+                      >
+                        <ArrowUpDown size={14} className="text-slate-400" />
+                        {sortOrder === 'birthday' ? '誕生日順' : sortOrder === 'age-asc' ? '年齢が低い順' : '年齢が高い順'}
+                      </button>
                     )}
                   </div>
                   {activeViewData.people.length === 0 ? (
@@ -589,6 +594,5 @@
         const root = createRoot(document.getElementById('root'));
         root.render(<App />);
     </script>
-<script type="module" src="/index.tsx"></script>
 </body>
 </html>
