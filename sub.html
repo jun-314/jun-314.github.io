@@ -66,11 +66,11 @@
     const STORAGE_KEY = 'family_tree_data';
     const VIEWPORT_KEY = 'family_tree_viewport';
     
-    // Layout Constants
+    // Layout Constants (Balanced for clear block separation)
     const LAYER_HEIGHT = 280; 
-    const SIBLING_GAP = 50;   
-    const COUSIN_GAP = 140;   
-    const SPOUSE_GAP = 50;    
+    const SIBLING_GAP = 50;   // Increased to prevent overlap and give breathing room
+    const COUSIN_GAP = 140;   // Distinctly separate family blocks
+    const SPOUSE_GAP = 60;    // Clear separation for couples
 
     // Initial Data
     const INITIAL_PEOPLE = [
@@ -192,7 +192,7 @@
       return map;
     };
 
-    // --- Utils: Recursive AutoLayout (Fixed Centering) ---
+    // --- Utils: Recursive AutoLayout (Fixed Centering with Blocks) ---
     const performAutoLayout = (targetPeople) => {
         const people = JSON.parse(JSON.stringify(targetPeople));
         const personMap = new Map(people.map(p => [p.id, p]));
@@ -487,7 +487,7 @@
       );
     });
 
-    // --- Component: EditModal ---
+    // --- Component: EditModal (Updated for Add Relative Flow) ---
     const EditModal = ({ person, isOpen, onClose, onSave, onDelete, onAddRelative }) => {
       const [view, setView] = useState('main'); // 'main' or 'add'
       const [addType, setAddType] = useState(null); // 'parent', 'spouse', 'child'
@@ -548,6 +548,7 @@
 
       const displayName = formData.surname ? `${formData.surname} ${formData.givenName}` : 'この人物';
       
+      // Dynamic Title for Add View
       const getAddTitle = () => {
           const name = person.surname && person.givenName ? `${person.surname} ${person.givenName}` : '選択中の人物';
           if (addType === 'parent') return `${name} の親を追加`;
@@ -570,12 +571,28 @@
                     <div className="p-6 overflow-y-auto">
                         <form id="add-relative-form" onSubmit={handleAddSave} className="space-y-4">
                             <div className="grid grid-cols-2 gap-4">
-                                <div><label className="block text-sm font-medium text-gray-700 mb-1">苗字</label><input type="text" name="surname" value={addFormData.surname || ''} onChange={handleAddChange} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" placeholder="例: 佐藤" autoFocus /></div>
-                                <div><label className="block text-sm font-medium text-gray-700 mb-1">名前</label><input type="text" name="givenName" value={addFormData.givenName || ''} onChange={handleAddChange} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" placeholder="例: 太郎" required /></div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">苗字</label>
+                                    <input type="text" name="surname" value={addFormData.surname || ''} onChange={handleAddChange} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" placeholder="例: 佐藤" autoFocus />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">名前</label>
+                                    <input type="text" name="givenName" value={addFormData.givenName || ''} onChange={handleAddChange} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" placeholder="例: 太郎" required />
+                                </div>
                             </div>
                             <div className="grid grid-cols-2 gap-4">
-                                <div><label className="block text-sm font-medium text-gray-700 mb-1">生年月日</label><input type="date" name="birthDate" value={addFormData.birthDate || ''} onChange={handleAddChange} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" /></div>
-                                <div><label className="block text-sm font-medium text-gray-700 mb-1">性別</label><select name="gender" value={addFormData.gender || 'other'} onChange={handleAddChange} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white"><option value="male">男性</option><option value="female">女性</option><option value="other">その他</option></select></div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">生年月日</label>
+                                    <input type="date" name="birthDate" value={addFormData.birthDate || ''} onChange={handleAddChange} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">性別</label>
+                                    <select name="gender" value={addFormData.gender || 'other'} onChange={handleAddChange} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white">
+                                        <option value="male">男性</option>
+                                        <option value="female">女性</option>
+                                        <option value="other">その他</option>
+                                    </select>
+                                </div>
                             </div>
                         </form>
                     </div>
@@ -732,9 +749,71 @@
       const [isFilterOpen, setIsFilterOpen] = useState(false);
       const getFilterName = useCallback((p) => (viewSettings.showMaidenName && p.maidenName ? p.maidenName : p.surname || '名称未設定'), [viewSettings.showMaidenName]);
 
-      // Update visibleSurnames when data or settings change
+      // --- Inherited Surnames Logic (New Feature) ---
+      const inheritedSurnamesMap = useMemo(() => {
+          const map = new Map();
+          const personMap = new Map(people.map(p => [p.id, p]));
+
+          people.forEach(p => {
+              // Check if person has maiden name displayed
+              if (p.displayMaidenName && p.maidenName) {
+                  const surname = p.maidenName.trim().split(/[\s　]+/)[0];
+                  if (!surname) return;
+
+                  // Recursive propagation function
+                  const propagate = (targetId, visited = new Set()) => {
+                      if (visited.has(targetId)) return;
+                      visited.add(targetId);
+
+                      // Add surname to map
+                      if (!map.has(targetId)) map.set(targetId, new Set());
+                      map.get(targetId).add(surname);
+
+                      const target = personMap.get(targetId);
+                      if (!target) return;
+
+                      // Propagate to spouses
+                      target.spouses.forEach(spId => propagate(spId, visited));
+
+                      // Propagate to children
+                      target.children.forEach(childId => propagate(childId, visited));
+                  };
+
+                  // Start propagation from this person (including self, spouses, children)
+                  propagate(p.id);
+              }
+          });
+          return map;
+      }, [people]);
+
+      // Updated checkVisibility
+      const checkVisibility = useCallback((p) => {
+          const selfName = getFilterName(p);
+          // Check if self name is enabled
+          if (visibleSurnames[selfName] !== false) return true;
+          
+          // Check inherited surnames
+          const inherited = inheritedSurnamesMap.get(p.id);
+          if (inherited) {
+              for (const s of inherited) {
+                  if (visibleSurnames[s] !== false) return true;
+              }
+          }
+          
+          return false;
+      }, [visibleSurnames, getFilterName, inheritedSurnamesMap]);
+      
+      // Update visibleSurnames initialization
       useEffect(() => {
-          const names = new Set(); people.forEach(p => names.add(getFilterName(p)));
+          const names = new Set(); 
+          people.forEach(p => {
+              names.add(getFilterName(p));
+              const inherited = inheritedSurnamesMap.get(p.id);
+              if (inherited) {
+                  inherited.forEach(s => names.add(s));
+              }
+          });
+          
           setVisibleSurnames(prev => {
               const next = {}; 
               Array.from(names).forEach(s => {
@@ -742,7 +821,7 @@
               });
               return next;
           });
-      }, [people, getFilterName, viewSettings.showMaidenName]); // Added explicit dependency
+      }, [people, getFilterName, inheritedSurnamesMap]);
 
       useEffect(() => {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(people));
@@ -774,7 +853,6 @@
           return () => document.removeEventListener('mousedown', handleClickOutside);
       }, [isFilterOpen]);
 
-      const checkVisibility = useCallback((p) => visibleSurnames[getFilterName(p)] !== false, [visibleSurnames, getFilterName]);
       const relationshipMap = useMemo(() => selectedPersonId ? analyzeRelationships(selectedPersonId, people) : new Map(), [selectedPersonId, people]);
 
       const connections = useMemo(() => {
