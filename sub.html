@@ -4,12 +4,12 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>家系図プロ - 家系図作成ツール</title>
-  
+
   <!-- Libraries -->
   <script src="https://cdn.tailwindcss.com"></script>
-  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
-  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.26.4/babel.min.js"></script>
 
   <script>
     tailwind.config = {
@@ -43,16 +43,6 @@
       background-color: #f8fafc;
     }
   </style>
-<script type="importmap">
-{
-  "imports": {
-    "react": "https://esm.sh/react@^19.2.4",
-    "react-dom/": "https://esm.sh/react-dom@^19.2.4/",
-    "react/": "https://esm.sh/react@^19.2.4/",
-    "uuid": "https://esm.sh/uuid@^13.0.0"
-  }
-}
-</script>
 </head>
 <body>
   <div id="root"></div>
@@ -61,16 +51,22 @@
     const { useState, useEffect, useRef, useMemo, useCallback, memo } = React;
 
     // --- Constants ---
-    const CARD_WIDTH = 350; 
-    const CARD_HEIGHT = 150; 
+    const CARD_WIDTH = 350;
+    const CARD_HEIGHT = 150;
     const STORAGE_KEY = 'family_tree_data';
     const VIEWPORT_KEY = 'family_tree_viewport';
-    
-    // Layout Constants
-    const LAYER_HEIGHT = 280; 
-    const SIBLING_GAP = 50;   
-    const COUSIN_GAP = 140;   
-    const SPOUSE_GAP = 50;    
+
+    // localStorage が使えない環境(サンドボックス等)でも落ちないようにするラッパー
+    const safeStorage = {
+      getItem(key) { try { return window.localStorage.getItem(key); } catch (e) { return null; } },
+      setItem(key, value) { try { window.localStorage.setItem(key, value); } catch (e) { /* ignore */ } }
+    };
+
+    // Layout Constants (Balanced for clear block separation)
+    const LAYER_HEIGHT = 280;
+    const SIBLING_GAP = 50;   // Increased to prevent overlap and give breathing room
+    const COUSIN_GAP = 140;   // Distinctly separate family blocks
+    const SPOUSE_GAP = 60;    // Clear separation for couples
 
     // Initial Data
     const INITIAL_PEOPLE = [
@@ -192,11 +188,11 @@
       return map;
     };
 
-    // --- Utils: Recursive AutoLayout (Fixed Centering) ---
+    // --- Utils: Recursive AutoLayout (Fixed Centering with Blocks) ---
     const performAutoLayout = (targetPeople) => {
         const people = JSON.parse(JSON.stringify(targetPeople));
         const personMap = new Map(people.map(p => [p.id, p]));
-        
+
         // 1. Calculate Generations
         const generations = new Map();
         people.forEach(p => generations.set(p.id, 0));
@@ -218,7 +214,7 @@
             });
             iter++;
         }
-        
+
         for(let i=0; i<3; i++) {
             people.forEach(p => {
                 const myGen = generations.get(p.id);
@@ -309,7 +305,7 @@
 
             const childUnits = [];
             const childVisited = new Set();
-            
+
             childrenIds.sort((a, b) => {
                 const pa = personMap.get(a);
                 const pb = personMap.get(b);
@@ -339,7 +335,7 @@
 
         const setPositions = (unitIds, startX, startY, availableWidth) => {
             const unitWidth = unitIds.length * CARD_WIDTH + (unitIds.length - 1) * SPOUSE_GAP;
-            
+
             // Gather children
             let childrenIds = [];
             unitIds.forEach(uid => {
@@ -378,7 +374,7 @@
                 widths = childUnits.map(u => getUnitWidth(u));
                 totalCWidth = widths.reduce((a,b)=>a+b,0) + (widths.length > 0 ? (widths.length-1)*SIBLING_GAP : 0);
             }
-            
+
             // Layout Calculations
             // Center Parents
             const parentX = startX + (availableWidth - unitWidth) / 2;
@@ -436,7 +432,7 @@
       let ringClass = '';
       if (isSelected) { borderColor = 'border-red-500'; ringClass = 'ring-4 ring-red-100'; }
       else if (relationship && !viewSettings.useGenderColor) borderColor = 'border-indigo-300';
-      
+
       const iconColor = person.gender === 'male' ? 'text-blue-500' : person.gender === 'female' ? 'text-pink-500' : 'text-purple-500';
       const genderLabel = person.gender === 'male' ? '男性' : person.gender === 'female' ? '女性' : 'その他';
 
@@ -446,7 +442,7 @@
           if (relationship.type === 'self') badgeColor = 'bg-green-100 text-green-700 border-green-200';
           else if (relationship.label === '配偶者') badgeColor = 'bg-pink-100 text-pink-700 border-pink-200';
           else if (relationship.degree === 1) badgeColor = 'bg-blue-50 text-blue-700 border-blue-100';
-          
+
           badge = (
               <div className={`absolute -top-9 left-1/2 -translate-x-1/2 px-5 py-1.5 rounded-full text-xl font-bold border shadow-sm whitespace-nowrap z-20 ${badgeColor}`}>
                   {relationship.label}
@@ -487,7 +483,7 @@
       );
     });
 
-    // --- Component: EditModal ---
+    // --- Component: EditModal (Updated for Add Relative Flow) ---
     const EditModal = ({ person, isOpen, onClose, onSave, onDelete, onAddRelative }) => {
       const [view, setView] = useState('main'); // 'main' or 'add'
       const [addType, setAddType] = useState(null); // 'parent', 'spouse', 'child'
@@ -528,7 +524,7 @@
         onSave(person.id, formData);
         onClose();
       };
-      
+
       const handleAddSave = (e) => {
           e.preventDefault();
           onAddRelative(person.id, addType, addFormData);
@@ -547,7 +543,8 @@
       };
 
       const displayName = formData.surname ? `${formData.surname} ${formData.givenName}` : 'この人物';
-      
+
+      // Dynamic Title for Add View
       const getAddTitle = () => {
           const name = person.surname && person.givenName ? `${person.surname} ${person.givenName}` : '選択中の人物';
           if (addType === 'parent') return `${name} の親を追加`;
@@ -570,12 +567,28 @@
                     <div className="p-6 overflow-y-auto">
                         <form id="add-relative-form" onSubmit={handleAddSave} className="space-y-4">
                             <div className="grid grid-cols-2 gap-4">
-                                <div><label className="block text-sm font-medium text-gray-700 mb-1">苗字</label><input type="text" name="surname" value={addFormData.surname || ''} onChange={handleAddChange} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" placeholder="例: 佐藤" autoFocus /></div>
-                                <div><label className="block text-sm font-medium text-gray-700 mb-1">名前</label><input type="text" name="givenName" value={addFormData.givenName || ''} onChange={handleAddChange} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" placeholder="例: 太郎" required /></div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">苗字</label>
+                                    <input type="text" name="surname" value={addFormData.surname || ''} onChange={handleAddChange} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" placeholder="例: 佐藤" autoFocus />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">名前</label>
+                                    <input type="text" name="givenName" value={addFormData.givenName || ''} onChange={handleAddChange} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" placeholder="例: 太郎" required />
+                                </div>
                             </div>
                             <div className="grid grid-cols-2 gap-4">
-                                <div><label className="block text-sm font-medium text-gray-700 mb-1">生年月日</label><input type="date" name="birthDate" value={addFormData.birthDate || ''} onChange={handleAddChange} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" /></div>
-                                <div><label className="block text-sm font-medium text-gray-700 mb-1">性別</label><select name="gender" value={addFormData.gender || 'other'} onChange={handleAddChange} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white"><option value="male">男性</option><option value="female">女性</option><option value="other">その他</option></select></div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">生年月日</label>
+                                    <input type="date" name="birthDate" value={addFormData.birthDate || ''} onChange={handleAddChange} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">性別</label>
+                                    <select name="gender" value={addFormData.gender || 'other'} onChange={handleAddChange} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white">
+                                        <option value="male">男性</option>
+                                        <option value="female">女性</option>
+                                        <option value="other">その他</option>
+                                    </select>
+                                </div>
                             </div>
                         </form>
                     </div>
@@ -653,13 +666,27 @@
       useEffect(() => { if (isOpen) { setJsonString(JSON.stringify(currentData, null, 2)); setError(null); setSuccessMsg(null); } }, [isOpen, currentData]);
       if (!isOpen) return null;
       const handleCopy = async () => { try { await navigator.clipboard.writeText(jsonString); setSuccessMsg('コピーしました'); } catch { setError('コピー失敗'); } };
+      const handleDownload = () => {
+        try {
+          const blob = new Blob([jsonString], { type: 'application/json' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `family_tree_${new Date().toISOString().slice(0,10)}.json`;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          setTimeout(() => URL.revokeObjectURL(url), 1000);
+          setSuccessMsg('ダウンロードしました');
+        } catch (e) { setError('ダウンロード失敗: ' + e.message); }
+      };
       const handleReset = () => { if (window.confirm('初期データに戻しますか？')) { onReset(); onClose(); } };
       const handleImport = () => { try { const parsed = JSON.parse(jsonString); if (!Array.isArray(parsed)) throw new Error('Not array'); onImport(parsed); onClose(); } catch (e) { setError('エラー: ' + e.message); } };
       return (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg flex flex-col max-h-[90vh]">
             <div className="bg-gray-50 p-4 border-b flex justify-between items-center rounded-t-xl"><h2 className="text-xl font-bold text-gray-800">データ管理</h2><button onClick={onClose} className="text-gray-400">✕</button></div>
-            <div className="p-6 flex-1 overflow-y-auto"><textarea className="w-full h-64 p-3 text-xs font-mono border rounded-lg bg-gray-50" value={jsonString} onChange={(e) => setJsonString(e.target.value)} /><div className="flex gap-2 mt-2"><button onClick={handleCopy} className="text-xs bg-gray-100 px-2 py-1 rounded">コピー</button></div>{error && <div className="text-red-500 text-sm mt-2">{error}</div>}{successMsg && <div className="text-green-500 text-sm mt-2">{successMsg}</div>}</div>
+            <div className="p-6 flex-1 overflow-y-auto"><textarea className="w-full h-64 p-3 text-xs font-mono border rounded-lg bg-gray-50" value={jsonString} onChange={(e) => setJsonString(e.target.value)} /><div className="flex gap-2 mt-2"><button onClick={handleCopy} className="text-xs bg-gray-100 px-2 py-1 rounded">コピー</button><button onClick={handleDownload} className="text-xs bg-gray-100 px-2 py-1 rounded">JSONで保存</button></div>{error && <div className="text-red-500 text-sm mt-2">{error}</div>}{successMsg && <div className="text-green-500 text-sm mt-2">{successMsg}</div>}</div>
             <div className="bg-gray-50 p-4 border-t flex justify-between"><button onClick={handleReset} className="text-red-600 text-sm">初期化</button><div className="flex gap-3"><button onClick={onClose} className="text-sm bg-white border px-3 py-2 rounded">閉じる</button><button onClick={handleImport} className="text-sm text-white bg-blue-600 px-3 py-2 rounded">読込</button></div></div>
           </div>
         </div>
@@ -670,7 +697,7 @@
     const App = () => {
       const [people, setPeople] = useState(() => {
         try {
-          const savedData = localStorage.getItem(STORAGE_KEY);
+          const savedData = safeStorage.getItem(STORAGE_KEY);
           if (savedData) {
             const parsed = JSON.parse(savedData);
             return parsed.map(p => {
@@ -714,11 +741,11 @@
 
       // Initial Load Effect: Restore Viewport
       useEffect(() => {
-          const hasSavedData = localStorage.getItem(STORAGE_KEY);
+          const hasSavedData = safeStorage.getItem(STORAGE_KEY);
           if (!hasSavedData) {
               handleFitView();
           } else {
-             const savedViewport = localStorage.getItem(VIEWPORT_KEY);
+             const savedViewport = safeStorage.getItem(VIEWPORT_KEY);
              if (savedViewport) {
                  try { setViewport(JSON.parse(savedViewport)); } catch(e){ handleFitView(); }
              } else {
@@ -732,25 +759,87 @@
       const [isFilterOpen, setIsFilterOpen] = useState(false);
       const getFilterName = useCallback((p) => (viewSettings.showMaidenName && p.maidenName ? p.maidenName : p.surname || '名称未設定'), [viewSettings.showMaidenName]);
 
-      // Update visibleSurnames when data or settings change
+      // --- Inherited Surnames Logic (New Feature) ---
+      const inheritedSurnamesMap = useMemo(() => {
+          const map = new Map();
+          const personMap = new Map(people.map(p => [p.id, p]));
+
+          people.forEach(p => {
+              // Check if person has maiden name displayed
+              if (p.displayMaidenName && p.maidenName) {
+                  const surname = p.maidenName.trim().split(/[\s　]+/)[0];
+                  if (!surname) return;
+
+                  // Recursive propagation function
+                  const propagate = (targetId, visited = new Set()) => {
+                      if (visited.has(targetId)) return;
+                      visited.add(targetId);
+
+                      // Add surname to map
+                      if (!map.has(targetId)) map.set(targetId, new Set());
+                      map.get(targetId).add(surname);
+
+                      const target = personMap.get(targetId);
+                      if (!target) return;
+
+                      // Propagate to spouses
+                      target.spouses.forEach(spId => propagate(spId, visited));
+
+                      // Propagate to children
+                      target.children.forEach(childId => propagate(childId, visited));
+                  };
+
+                  // Start propagation from this person (including self, spouses, children)
+                  propagate(p.id);
+              }
+          });
+          return map;
+      }, [people]);
+
+      // Updated checkVisibility
+      const checkVisibility = useCallback((p) => {
+          const selfName = getFilterName(p);
+          // Check if self name is enabled
+          if (visibleSurnames[selfName] !== false) return true;
+
+          // Check inherited surnames
+          const inherited = inheritedSurnamesMap.get(p.id);
+          if (inherited) {
+              for (const s of inherited) {
+                  if (visibleSurnames[s] !== false) return true;
+              }
+          }
+
+          return false;
+      }, [visibleSurnames, getFilterName, inheritedSurnamesMap]);
+
+      // Update visibleSurnames initialization
       useEffect(() => {
-          const names = new Set(); people.forEach(p => names.add(getFilterName(p)));
+          const names = new Set();
+          people.forEach(p => {
+              names.add(getFilterName(p));
+              const inherited = inheritedSurnamesMap.get(p.id);
+              if (inherited) {
+                  inherited.forEach(s => names.add(s));
+              }
+          });
+
           setVisibleSurnames(prev => {
-              const next = {}; 
+              const next = {};
               Array.from(names).forEach(s => {
                   next[s] = prev[s] !== undefined ? prev[s] : true;
               });
               return next;
           });
-      }, [people, getFilterName, viewSettings.showMaidenName]); // Added explicit dependency
+      }, [people, getFilterName, inheritedSurnamesMap]);
 
       useEffect(() => {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(people));
+        safeStorage.setItem(STORAGE_KEY, JSON.stringify(people));
       }, [people]);
 
       useEffect(() => {
           const timer = setTimeout(() => {
-              localStorage.setItem(VIEWPORT_KEY, JSON.stringify(viewport));
+              safeStorage.setItem(VIEWPORT_KEY, JSON.stringify(viewport));
           }, 500);
           return () => clearTimeout(timer);
       }, [viewport]);
@@ -760,7 +849,7 @@
       const [isSettingsOpen, setIsSettingsOpen] = useState(false);
       const [draggingNodeId, setDraggingNodeId] = useState(null);
       const [isPanning, setIsPanning] = useState(false);
-      
+
       const mousePosRef = useRef({ x: 0, y: 0 });
       const dragStartPosRef = useRef({ x: 0, y: 0 });
       const isDraggingRef = useRef(false);
@@ -774,7 +863,6 @@
           return () => document.removeEventListener('mousedown', handleClickOutside);
       }, [isFilterOpen]);
 
-      const checkVisibility = useCallback((p) => visibleSurnames[getFilterName(p)] !== false, [visibleSurnames, getFilterName]);
       const relationshipMap = useMemo(() => selectedPersonId ? analyzeRelationships(selectedPersonId, people) : new Map(), [selectedPersonId, people]);
 
       const connections = useMemo(() => {
@@ -803,14 +891,14 @@
             let startX, startY;
             if (parents.length >= 2) {
                  const c1 = getCardCenter(parents[0].x, parents[0].y), c2 = getCardCenter(parents[1].x, parents[1].y);
-                 startX = (c1.x + c2.x) / 2; startY = c1.y; 
+                 startX = (c1.x + c2.x) / 2; startY = c1.y;
             } else { const bottom = getCardBottom(parents[0].x, parents[0].y); startX = bottom.x; startY = bottom.y; }
             let childMinX = Infinity, childMaxX = -Infinity, childTopY = Infinity;
             family.children.forEach(c => {
                  const top = getCardTop(c.x, c.y);
                  childMinX = Math.min(childMinX, top.x); childMaxX = Math.max(childMaxX, top.x); childTopY = Math.min(childTopY, top.y);
             });
-            const childLineY = childTopY - 40; 
+            const childLineY = childTopY - 40;
             lines.push(<path key={`d-${key}`} d={`M ${startX} ${startY} L ${startX} ${childLineY}`} stroke="#333" strokeWidth="2" fill="none" />);
             lines.push(<path key={`cb-${key}`} d={`M ${Math.min(childMinX, startX)} ${childLineY} L ${Math.max(childMaxX, startX)} ${childLineY}`} stroke="#333" strokeWidth="2" fill="none" />);
             family.children.forEach(c => { const top = getCardTop(c.x, c.y); lines.push(<path key={`cs-${c.id}`} d={`M ${top.x} ${childLineY} L ${top.x} ${top.y}`} stroke="#333" strokeWidth="2" fill="none" />); });
@@ -844,7 +932,7 @@
         const layouted = performAutoLayout(visiblePeople);
         const layoutMap = new Map(layouted.map(p => [p.id, {x: p.x, y: p.y}]));
         setPeople(prev => prev.map(p => layoutMap.has(p.id) ? { ...p, ...layoutMap.get(p.id) } : p));
-        
+
         // Fit view after layout
         setTimeout(() => {
              if (layouted.length === 0) return;
@@ -874,7 +962,7 @@
           if (!source) return;
           const newId = generateId();
           const newPerson = { id: newId, surname: data.surname, givenName: data.givenName, maidenName: '', birthDate: data.birthDate, gender: data.gender, parents: [], spouses: [], children: [], x: source.x, y: source.y };
-          
+
           if (type === 'spouse') {
               newPerson.x += CARD_WIDTH + 50;
               newPerson.spouses = [sourceId];
@@ -908,9 +996,9 @@
 
       const handleToggleMaidenName = () => {
           if (selectedPersonId) {
-              setPeople(prev => prev.map(p => 
-                  p.id === selectedPersonId 
-                  ? { ...p, displayMaidenName: !p.displayMaidenName } 
+              setPeople(prev => prev.map(p =>
+                  p.id === selectedPersonId
+                  ? { ...p, displayMaidenName: !p.displayMaidenName }
                   : p
               ));
           } else {
@@ -919,7 +1007,7 @@
               setPeople(prev => prev.map(p => ({ ...p, displayMaidenName: nextState })));
           }
       };
-      
+
       const handleZoomIn = () => {
         if (selectedPersonId) {
             const p = people.find(x => x.id === selectedPersonId);
