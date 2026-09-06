@@ -53,7 +53,6 @@
   }
 }
 </script>
-<link rel="stylesheet" href="/index.css">
 </head>
 <body>
   <div id="root"></div>
@@ -70,7 +69,7 @@
     // Layout Constants (Balanced for clear block separation)
     const LAYER_HEIGHT = 280; 
     const SIBLING_GAP = 50;   // Increased to prevent overlap and give breathing room
-    const COUSIN_GAP = 80;   // Distinctly separate family blocks
+    const COUSIN_GAP = 140;   // Distinctly separate family blocks
     const SPOUSE_GAP = 60;    // Clear separation for couples
 
     // Initial Data
@@ -295,30 +294,22 @@
         };
 
         // 3. Layout Logic
-        const globalClaimed = new Set();
-        const unitChildrenMap = new Map();
-        const unitWidthsMap = new Map();
-
-        const getUnitKey = (unitIds) => unitIds.slice().sort().join(',');
-
-        const buildTree = (unitIds) => {
-            const unitKey = getUnitKey(unitIds);
-            if (unitChildrenMap.has(unitKey)) return;
-
+        const getUnitWidth = (unitIds) => {
+            const myWidth = unitIds.length * CARD_WIDTH + (unitIds.length - 1) * SPOUSE_GAP;
             let childrenIds = [];
             unitIds.forEach(uid => {
                 const p = personMap.get(uid);
                 if (p) childrenIds.push(...p.children);
             });
             childrenIds = [...new Set(childrenIds)];
-            
             const myGen = generations.get(unitIds[0]);
             childrenIds = childrenIds.filter(cid => generations.get(cid) === myGen + 1);
-            childrenIds = childrenIds.filter(cid => !globalClaimed.has(cid));
+
+            if (childrenIds.length === 0) return myWidth;
 
             const childUnits = [];
             const childVisited = new Set();
-
+            
             childrenIds.sort((a, b) => {
                 const pa = personMap.get(a);
                 const pb = personMap.get(b);
@@ -329,69 +320,76 @@
                 if (childVisited.has(cid)) return;
                 const cUnit = [cid];
                 childVisited.add(cid);
-                globalClaimed.add(cid);
                 const child = personMap.get(cid);
                 child.spouses.forEach(sid => {
                     if (personMap.has(sid) && !childVisited.has(sid)) {
                         cUnit.push(sid);
                         childVisited.add(sid);
-                        globalClaimed.add(sid);
                     }
                 });
                 smartSortUnit(cUnit);
                 childUnits.push(cUnit);
             });
 
-            unitChildrenMap.set(unitKey, childUnits);
-            childUnits.forEach(cu => buildTree(cu));
-        };
-
-        roots.forEach(rootUnit => {
-            rootUnit.forEach(uid => globalClaimed.add(uid));
-            buildTree(rootUnit);
-        });
-
-        const getUnitWidth = (unitIds) => {
-            const unitKey = getUnitKey(unitIds);
-            if (unitWidthsMap.has(unitKey)) return unitWidthsMap.get(unitKey);
-
-            const myWidth = unitIds.length * CARD_WIDTH + (unitIds.length - 1) * SPOUSE_GAP;
-            const childUnits = unitChildrenMap.get(unitKey) || [];
-
-            if (childUnits.length === 0) {
-                unitWidthsMap.set(unitKey, myWidth);
-                return myWidth;
-            }
-
             const childWidths = childUnits.map(cu => getUnitWidth(cu));
             const totalChildrenWidth = childWidths.reduce((sum, w) => sum + w, 0) + (childWidths.length > 0 ? (childWidths.length - 1) * SIBLING_GAP : 0);
 
-            const width = Math.max(myWidth, totalChildrenWidth);
-            unitWidthsMap.set(unitKey, width);
-            return width;
+            return Math.max(myWidth, totalChildrenWidth);
         };
 
         const setPositions = (unitIds, startX, startY, availableWidth) => {
-            const unitKey = getUnitKey(unitIds);
             const unitWidth = unitIds.length * CARD_WIDTH + (unitIds.length - 1) * SPOUSE_GAP;
-            const childUnits = unitChildrenMap.get(unitKey) || [];
             
-            let parentX = startX + (availableWidth - unitWidth) / 2;
-            let childStartX = startX;
+            // Gather children
+            let childrenIds = [];
+            unitIds.forEach(uid => {
+                const p = personMap.get(uid);
+                if (p) childrenIds.push(...p.children);
+            });
+            childrenIds = [...new Set(childrenIds)];
+            const myGen = generations.get(unitIds[0]);
+            childrenIds = childrenIds.filter(cid => generations.get(cid) === myGen + 1);
 
-            if (childUnits.length > 0) {
-                const widths = childUnits.map(u => getUnitWidth(u));
-                const totalCWidth = widths.reduce((a,b)=>a+b,0) + (widths.length > 0 ? (widths.length-1)*SIBLING_GAP : 0);
-                
+            let childUnits = [];
+            let widths = [];
+            let totalCWidth = 0;
+
+            if (childrenIds.length > 0) {
+                const childVisited = new Set();
+                childrenIds.sort((a, b) => {
+                    const pa = personMap.get(a);
+                    const pb = personMap.get(b);
+                    return (pa.birthDate || '9999').localeCompare(pb.birthDate || '9999');
+                });
+                childrenIds.forEach(cid => {
+                    if (childVisited.has(cid)) return;
+                    const cUnit = [cid];
+                    childVisited.add(cid);
+                    const child = personMap.get(cid);
+                    child.spouses.forEach(sid => {
+                         if (personMap.has(sid) && !childVisited.has(sid)) {
+                            cUnit.push(sid);
+                            childVisited.add(sid);
+                        }
+                    });
+                    smartSortUnit(cUnit);
+                    childUnits.push(cUnit);
+                });
+                widths = childUnits.map(u => getUnitWidth(u));
+                totalCWidth = widths.reduce((a,b)=>a+b,0) + (widths.length > 0 ? (widths.length-1)*SIBLING_GAP : 0);
+            }
+            
+            // Layout Calculations
+            // Center Parents
+            const parentX = startX + (availableWidth - unitWidth) / 2;
+
+            // Center Children block
+            let childStartX = startX;
+            if (totalCWidth > 0) {
                 childStartX = startX + (availableWidth - totalCWidth) / 2;
-                
-                const firstChildUnitCenter = childStartX + widths[0] / 2;
-                const lastChildUnitCenter = childStartX + totalCWidth - (widths[widths.length - 1] / 2);
-                const childrenVisualCenter = (firstChildUnitCenter + lastChildUnitCenter) / 2;
-                
-                parentX = childrenVisualCenter - unitWidth / 2;
             }
 
+            // Set Parent Coordinates
             let currentX = parentX;
             unitIds.forEach(uid => {
                 const p = personMap.get(uid);
@@ -400,9 +398,9 @@
                 currentX += CARD_WIDTH + SPOUSE_GAP;
             });
 
-            if (childUnits.length > 0) {
+            // Set Child Coordinates (Recursive)
+            if (childrenIds.length > 0) {
                 let currentCX = childStartX;
-                const widths = childUnits.map(u => getUnitWidth(u));
                 childUnits.forEach((cu, idx) => {
                     setPositions(cu, currentCX, startY + LAYER_HEIGHT, widths[idx]);
                     currentCX += widths[idx] + SIBLING_GAP;
@@ -1065,6 +1063,5 @@
     const root = ReactDOM.createRoot(document.getElementById('root'));
     root.render(<App />);
   </script>
-<script type="module" src="/index.tsx"></script>
 </body>
 </html>
